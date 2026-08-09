@@ -1,0 +1,62 @@
+# ComfyUI-llama-cpp_vlm_fork
+
+llama.cpp ベースで ComfyUI 上の LLM / VLM をネイティブ実行するカスタムノードです。
+
+本リポジトリは [**lihaoyun6/ComfyUI-llama-cpp_vlm**](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) のフォークです。素晴らしい実装と継続的なメンテナンスに、心より感謝します。
+
+ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**  
+ノードカテゴリ: **`llama-cpp-vlm-fork`**
+
+## プレビュー
+
+![](./img/preview.jpg)
+
+## このフォークについて
+
+上流プロジェクトの機能を引き継ぎつつ、次のような変更・拡張を入れています。
+
+- モデル配置先を `ComfyUI/models/text_encoders`（キー `llm_vl`）に変更
+- 起動時に `prestartup_script.py` が `requirements.txt` から OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
+- Linux で CUDA wheel が必要とする `libnccl.so.2` を torch 同梱の `nvidia-nccl` から解決
+- Qwen3.6 など新しい chat handler / MTP 系モデル向けの調整
+- llama-cpp-python 0.3.46 の `mmproj_path` 対応、CPU（`vram_limit=0` + mmap）動作など
+- Prompt Enhancer に Krea 2 / Krea 2 Edit / Anima / MiniMax H3 など向けプリセット（英語・日本語）を追加
+
+公式の最新機能やワークフロー互換が必要な場合は、まず [上流リポジトリ](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) の利用を検討してください。
+
+## インストール
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/mckey-dev/ComfyUI-llama-cpp_vlm_fork.git
+```
+
+ComfyUI 起動時、`llama-cpp-python` が無ければ `prestartup_script.py` が `requirements.txt` から自動インストールします。
+
+**補足:** 新UI（Registry）は `pyproject.toml` の依存だけを入れます。`llama-cpp-python` は `requirements.txt` 側にあるため、Manager 経由では入りません（旧 Manager でも URL 直指定 wheel は失敗しやすいです）。事前に入れたい場合:
+
+```bash
+python -m pip install -r ComfyUI-llama-cpp_vlm_fork/requirements.txt
+```
+
+自動／手動インストールに失敗した場合はソースビルドを試してください。
+
+```bash
+pip uninstall llama-cpp-python -y
+set FORCE_CMAKE=1
+set CMAKE_ARGS=-DGGML_CUDA=on
+pip install llama-cpp-python --no-cache-dir
+```
+
+### モデル
+
+`.gguf` を `ComfyUI/models/text_encoders` に配置してください。
+
+> VLM で画像入力する場合は、対応する `mmproj` も同じフォルダへ置き、Loader で選択してください。
+
+## 謝辞
+
+- [lihaoyun6/ComfyUI-llama-cpp_vlm](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) @lihaoyun6 — 本フォークの上流。開発と公開に深く感謝します
+- [llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) @JamePeng
+- [ComfyUI-llama-cpp](https://github.com/kijai/ComfyUI-llama-cpp) @kijai
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) @comfyanonymous
