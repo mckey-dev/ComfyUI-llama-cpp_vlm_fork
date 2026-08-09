@@ -1,11 +1,11 @@
 """ComfyUI-llama-cpp_vlm_fork entrypoint.
 
-JamePeng CUDA wheels often link against libnccl.so.2 but do not bundle it.
-Resolve NCCL from the torch-shipped nvidia-nccl package before importing nodes
-(which import llama_cpp).
+JamePeng CUDA wheels link against libnccl / libcudart / libcublas but do not
+bundle them. Resolve those from pip nvidia-* packages before importing nodes
+(which import llama_cpp and later dlopen libggml-cuda.so).
 
 Changing LD_LIBRARY_PATH after process start is unreliable for dlopen, so we
-prefer placing a symlink next to libggml.so (llama_cpp/lib) when $ORIGIN is used.
+also symlink next to libggml.so (llama_cpp/lib) when $ORIGIN is used.
 """
 
 from __future__ import annotations
@@ -16,6 +16,14 @@ import sys
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
+
+# soname -> glob under nvidia/*/lib (cu12 wheels used by JamePeng cu128 builds)
+_CUDA_RUNTIME_LIBS = (
+    ("libnccl.so.2", "libnccl.so.2*"),
+    ("libcudart.so.12", "libcudart.so.12*"),
+    ("libcublas.so.12", "libcublas.so.12*"),
+    ("libcublasLt.so.12", "libcublasLt.so.12*"),
+)
 
 
 def _site_package_roots() -> list[Path]:
@@ -46,8 +54,19 @@ def _site_package_roots() -> list[Path]:
     return out
 
 
+def _nvidia_lib_dir_priority(path: Path) -> tuple[int, str]:
+    parts = {p.lower() for p in path.parts}
+    if "nccl" in parts:
+        return (0, str(path))
+    if "cuda_runtime" in parts:
+        return (1, str(path))
+    if "cublas" in parts:
+        return (2, str(path))
+    return (3, str(path))
+
+
 def _nvidia_lib_dirs() -> list[Path]:
-    """Return nvidia/*/lib directories under site-packages (nccl first)."""
+    """Return nvidia/*/lib directories under site-packages (nccl / cudart / cublas first)."""
     dirs: list[Path] = []
     seen: set[str] = set()
     for root in _site_package_roots():
@@ -61,16 +80,16 @@ def _nvidia_lib_dirs() -> list[Path]:
                 continue
             seen.add(key)
             dirs.append(d)
-    dirs.sort(key=lambda p: (0 if "nccl" in p.parts else 1, str(p)))
+    dirs.sort(key=_nvidia_lib_dir_priority)
     return dirs
 
 
-def _find_libnccl() -> Path | None:
+def _find_nvidia_lib(soname: str, pattern: str) -> Path | None:
     for d in _nvidia_lib_dirs():
-        candidate = d / "libnccl.so.2"
+        candidate = d / soname
         if candidate.exists():
             return candidate
-        matches = sorted(d.glob("libnccl.so.2*"))
+        matches = sorted(d.glob(pattern))
         if matches:
             return matches[0]
     return None
@@ -115,67 +134,74 @@ def _prepend_ld_library_path(dirs: list[Path]) -> None:
     os.environ["LD_LIBRARY_PATH"] = ":".join(out)
 
 
-def _link_nccl_into_llama_cpp(nccl: Path) -> Path | None:
+def _link_into_llama_cpp(src: Path, soname: str) -> Path | None:
     lib_dir = _llama_cpp_lib_dir()
     if lib_dir is None:
         return None
-    dest = lib_dir / "libnccl.so.2"
+    dest = lib_dir / soname
     try:
         if dest.exists() or dest.is_symlink():
             try:
-                if dest.resolve() == nccl.resolve():
+                if dest.resolve() == src.resolve():
                     return dest
             except OSError:
                 pass
             dest.unlink()
-        dest.symlink_to(nccl.resolve())
+        dest.symlink_to(src.resolve())
         return dest
     except OSError as e:
-        _log.warning("Could not symlink libnccl into llama_cpp/lib: %s", e)
+        _log.warning("Could not symlink %s into llama_cpp/lib: %s", soname, e)
         return None
 
 
-def _ensure_nccl_for_llama_cpp() -> None:
-    """Make libnccl.so.2 visible to JamePeng CUDA llama-cpp-python wheels (Linux)."""
+def _ensure_cuda_libs_for_llama_cpp() -> None:
+    """Expose NCCL / CUDA runtime libs to JamePeng CUDA llama-cpp-python (Linux)."""
     if not sys.platform.startswith("linux"):
         return
 
     lib_dirs = _nvidia_lib_dirs()
     _prepend_ld_library_path(lib_dirs)
 
-    nccl = _find_libnccl()
-    if nccl is None:
+    missing: list[str] = []
+    for soname, pattern in _CUDA_RUNTIME_LIBS:
+        src = _find_nvidia_lib(soname, pattern)
+        if src is None:
+            missing.append(soname)
+            continue
+        linked = _link_into_llama_cpp(src, soname)
+        if linked:
+            _log.info("llama-cpp: linked %s -> %s", linked, src)
+        else:
+            _log.warning(
+                "llama-cpp: found %s at %s but could not link into llama_cpp/lib",
+                soname,
+                src,
+            )
+
+    if missing:
         _log.warning(
-            "libnccl.so.2 not found under site-packages/nvidia/nccl/lib. "
-            "CUDA llama-cpp-python may fail to import; ensure torch's nvidia-nccl "
-            "package is installed (e.g. nvidia-nccl-cu12 / nvidia-nccl-cu13)."
-        )
-        return
-
-    linked = _link_nccl_into_llama_cpp(nccl)
-    if linked:
-        _log.info("llama-cpp: linked NCCL %s -> %s", linked, nccl)
-    else:
-        _log.warning(
-            "llama-cpp: libnccl found at %s but llama_cpp/lib was missing; "
-            "set LD_LIBRARY_PATH to include nvidia/nccl/lib before starting ComfyUI "
-            "if import fails.",
-            nccl,
+            "llama-cpp: missing CUDA libs %s under site-packages/nvidia/*/lib. "
+            "GPU offload will fall back to CPU. Install e.g. "
+            "nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-nccl-cu12 "
+            "(or the cu13 variants matching your torch).",
+            ", ".join(missing),
         )
 
 
-_ensure_nccl_for_llama_cpp()
+_ensure_cuda_libs_for_llama_cpp()
 
 # Prefer RTLD_GLOBAL preload if symlink alone is not enough (Linux).
 if sys.platform.startswith("linux"):
     try:
         import ctypes
 
-        nccl = _find_libnccl()
-        if nccl is not None:
-            ctypes.CDLL(str(nccl), mode=getattr(ctypes, "RTLD_GLOBAL", 0))
+        mode = getattr(ctypes, "RTLD_GLOBAL", 0)
+        for soname, pattern in _CUDA_RUNTIME_LIBS:
+            src = _find_nvidia_lib(soname, pattern)
+            if src is not None:
+                ctypes.CDLL(str(src), mode=mode)
     except OSError as e:
-        _log.debug("NCCL preload skipped: %s", e)
+        _log.debug("CUDA lib preload skipped: %s", e)
 
 try:
     from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS

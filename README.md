@@ -4,6 +4,8 @@ llama.cpp ベースで ComfyUI 上の LLM / VLM をネイティブ実行する�
 
 本リポジトリは [**lihaoyun6/ComfyUI-llama-cpp_vlm**](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) のフォークです。素晴らしい実装と継続的なメンテナンスに、心より感謝します。
 
+バージョン **2.0.0** 以降は上流と**非互換**です（モデル配置先・ノードカテゴリ・依存解決が異なります）。上流ワークフローをそのまま使う場合は [上流リポジトリ](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) を利用してください。
+
 ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**  
 ノードカテゴリ: **`llama-cpp-vlm-fork`**
 
@@ -15,14 +17,12 @@ ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**
 
 上流プロジェクトの機能を引き継ぎつつ、次のような変更・拡張を入れています。
 
-- モデル配置先を `ComfyUI/models/text_encoders`（キー `llm_vl`）に変更
+- モデル配置先を `ComfyUI/models/text_encoders`（キー `llm_vl`）に変更（上流の `models/LLM` とは非互換）
 - 起動時に `prestartup_script.py` が `requirements.txt` から OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
-- Linux で CUDA wheel が必要とする `libnccl.so.2` を torch 同梱の `nvidia-nccl` から解決
+- Linux で CUDA wheel が必要とする `libnccl` / `libcudart` / `libcublas` を pip の `nvidia-*` パッケージから解決（無いと CPU に落ちる）
 - Qwen3.6 など新しい chat handler / MTP 系モデル向けの調整
 - llama-cpp-python 0.3.46 の `mmproj_path` 対応、CPU（`vram_limit=0` + mmap）動作など
 - Prompt Enhancer に Krea 2 / Krea 2 Edit / Anima / MiniMax H3 など向けプリセット（英語・日本語）を追加
-
-公式の最新機能やワークフロー互換が必要な場合は、まず [上流リポジトリ](https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm) の利用を検討してください。
 
 ## インストール
 

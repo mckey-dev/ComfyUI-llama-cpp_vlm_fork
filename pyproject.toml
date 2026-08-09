@@ -1,7 +1,7 @@
 [project]
 name = "llama-cpp_vlm-fork"
 description = "Run LLM/VLM models natively in ComfyUI based on llama.cpp"
-version = "1.2.6+mod1"
+version = "2.0.0"
 license = {file = "LICENSE"} 
 classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
@@ -23,13 +23,12 @@ classifiers = [
 dependencies = ["diskcache", "scipy", "numpy", "pillow", "gguf", "tqdm"]
 
 [project.urls]
-Repository = "https://github.com/id-fa/ComfyUI-llama-cpp_vlm"
+Repository = "https://github.com/mckey-dev/ComfyUI-llama-cpp_vlm_fork"
 
 [tool.comfy]
-PublisherId = "id-fa"
+PublisherId = "mckey-dev"
 DisplayName = "llama-cpp_vlm-fork"
 Icon = ""
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
-Repository = "https://github.com/id-fa/ComfyUI-llama-cpp_vlm"
-
+Repository = "https://github.com/mckey-dev/ComfyUI-llama-cpp_vlm_fork"

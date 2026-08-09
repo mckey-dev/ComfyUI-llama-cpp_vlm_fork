@@ -233,9 +233,7 @@ class LLAMA_CPP_STORAGE:
         image_min_tokens = config["image_min_tokens"]
         n_gpu_layers = -1
         
-        model_path = folder_paths.get_full_path("llm_vl", model)
-        if not model_path or not os.path.isfile(model_path):
-            raise FileNotFoundError(f'Model not found under llm_vl/text_encoders: "{model}"')
+        model_path = resolve_llm_vl_path(model, "Model")
         handler = get_chat_handler(chat_handler)
         
         if vram_limit == 0:
@@ -246,9 +244,7 @@ class LLAMA_CPP_STORAGE:
             gguf_layer_size = max(gguf_size / gguf_layers, 1e-6)
         
         if mmproj and mmproj != "None":
-            mmproj_path = folder_paths.get_full_path("llm_vl", mmproj)
-            if not mmproj_path or not os.path.isfile(mmproj_path):
-                raise FileNotFoundError(f'mmproj not found under llm_vl/text_encoders: "{mmproj}"')
+            mmproj_path = resolve_llm_vl_path(mmproj, "mmproj")
             if chat_handler == "None":
                 raise ValueError('"chat_handler" cannot be None!')
             
@@ -382,6 +378,20 @@ def update_folder_names_and_paths(key, targets=[]):
     if base and base != orig:
         logging.warning(
             f"Unknown file list already present on key {key}: {base}")
+
+def resolve_llm_vl_path(filename: str, kind: str = "Model") -> str:
+    """Resolve a .gguf under llm_vl/text_encoders; surface broken symlinks clearly."""
+    path = folder_paths.get_full_path("llm_vl", filename)
+    if path and os.path.isfile(path):
+        return path
+    for folder in folder_paths.get_folder_paths("llm_vl"):
+        candidate = os.path.join(folder, filename)
+        if os.path.islink(candidate) and not os.path.exists(candidate):
+            raise FileNotFoundError(
+                f'{kind} is a broken symlink under llm_vl/text_encoders: "{filename}" -> '
+                f'"{os.path.realpath(candidate)}". Replace it with the real .gguf or fix the link target.'
+            )
+    raise FileNotFoundError(f'{kind} not found under llm_vl/text_encoders: "{filename}"')
 
 update_folder_names_and_paths("llm_vl", ["text_encoders"])
 preset_prompts = {
