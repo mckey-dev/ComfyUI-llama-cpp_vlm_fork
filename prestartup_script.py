@@ -1,24 +1,28 @@
-"""Install runtime deps for this node before ComfyUI imports it.
+"""Install runtime deps and expose CUDA libs before any custom node imports llama_cpp.
 
 ComfyUI Manager only reads pyproject.toml, which cannot list OS/Python-specific
 wheel URLs. requirements.txt is the source of truth for llama-cpp-python.
 
 On Linux, JamePeng CUDA wheels also need libcudart/libcublas (and usually
-libnccl). Those are pulled from pip nvidia-*-cu12 packages when missing.
+libnccl). Pip-install missing nvidia-*-cu12 packages, then symlink them into
+llama_cpp/lib *here* (prestartup), so ggml can register the CUDA backend on
+first dlopen — later fixes in __init__.py are too late if another node already
+imported llama_cpp.
 
 Failures are logged (not raised) so other custom nodes keep loading.
-Native load / symlink setup belongs in __init__.py after this script runs.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import platform
 import site
 import subprocess
 import sys
 from pathlib import Path
 
-REQ_PATH = Path(__file__).resolve().parent / "requirements.txt"
+_ROOT = Path(__file__).resolve().parent
+REQ_PATH = _ROOT / "requirements.txt"
 _PREFIX = "[ComfyUI-llama-cpp_vlm_fork]"
 
 # Linux CUDA runtime libs required by libggml-cuda.so (JamePeng cu12x wheels).
@@ -32,8 +36,6 @@ _LINUX_CUDA_PIP = (
 def _package_present(name: str) -> bool:
     """True if the distribution/module can be located (not a native-load test)."""
     try:
-        import importlib.util
-
         return importlib.util.find_spec(name) is not None
     except Exception:
         return False
@@ -91,7 +93,6 @@ def _marker_matches(markers: str, py: str, system: str) -> bool:
     except Exception:
         pass
 
-    # Fallback for environments without packaging, or odd marker strings.
     normalized = markers.replace("'", '"').replace(" ", "")
     need_py = f'python_version=="{py}"'
     need_os = f'platform_system=="{system}"'
@@ -104,7 +105,7 @@ def _wheel_url_from_requirements(req_path: Path) -> str | None:
         return None
 
     py = _python_version_tag()
-    system = platform.system()  # Windows / Linux / Darwin
+    system = platform.system()
 
     for raw in req_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = raw.strip()
@@ -178,13 +179,15 @@ def ensure_linux_cuda_runtime() -> None:
         if _nvidia_so_present(subdir, soname):
             print(f"{_PREFIX} CUDA lib OK: {soname}", flush=True)
         else:
-            print(f"{_PREFIX} CUDA lib missing: {soname} -> will install {pip_name}", flush=True)
+            print(
+                f"{_PREFIX} CUDA lib missing: {soname} -> will install {pip_name}",
+                flush=True,
+            )
             missing_pkgs.append(pip_name)
 
     if not missing_pkgs:
         return
 
-    # Dedupe while preserving order
     to_install = list(dict.fromkeys(missing_pkgs))
     print(
         f"{_PREFIX} installing Linux CUDA runtime packages: {', '.join(to_install)}",
@@ -215,8 +218,36 @@ def ensure_linux_cuda_runtime() -> None:
         print(f"{_PREFIX} Linux CUDA runtime packages: install complete", flush=True)
 
 
+def _load_cuda_runtime_module():
+    """Load support/cuda_runtime.py without importing the package (avoids llama_cpp)."""
+    path = _ROOT / "support" / "cuda_runtime.py"
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "comfyui_llama_cpp_vlm_fork_cuda_runtime", path
+    )
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def expose_cuda_libs_before_imports() -> None:
+    """Symlink / LD_LIBRARY_PATH / preload before any custom node imports llama_cpp."""
+    if not sys.platform.startswith("linux"):
+        return
+    mod = _load_cuda_runtime_module()
+    if mod is None:
+        print(f"{_PREFIX} [warn] support/cuda_runtime.py missing; skip CUDA path setup", flush=True)
+        return
+    mod.ensure_cuda_libs_for_llama_cpp(use_print=True)
+    mod.preload_and_probe_ggml_cuda(use_print=True)
+
+
 try:
     ensure_llama_cpp_python()
     ensure_linux_cuda_runtime()
+    expose_cuda_libs_before_imports()
 except Exception as e:
     print(f"{_PREFIX} [warn] prestartup failed: {e}", flush=True)

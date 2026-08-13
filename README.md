@@ -19,7 +19,7 @@ ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**
 
 - モデル配置先のデフォルトを `ComfyUI/models/llm` に変更（Settings で変更可。上流の `models/LLM` とは非互換）
 - 起動時に `prestartup_script.py` が OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
-- Linux では同スクリプトが `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` / `nvidia-nccl-cu12` も不足時に自動導入し、`__init__.py` が `libcudart` / `libcublas` / `libnccl` を解決（無いと CPU に落ちる）
+- Linux では同スクリプトが `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` / `nvidia-nccl-cu12` を不足時に自動導入し、**他ノードが `llama_cpp` を import する前に** `libcudart` / `libcublas` / `libnccl` を `llama_cpp/lib` へリンク（後からでは CUDA バックエンドが登録されず CPU のままになる）
 - Qwen3.6 など新しい chat handler / MTP 系モデル向けの調整
 - llama-cpp-python 0.3.46 の `mmproj_path` 対応、CPU（`vram_limit=0` + mmap）動作など
 - Prompt Enhancer に Krea 2 / Krea 2 Edit / Anima / MiniMax H3 など向けプリセット（英語・日本語）を追加
