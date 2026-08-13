@@ -245,7 +245,7 @@ def gpu_offload_hint() -> str:
     if sys.platform == "win32":
         return (
             f"Windows (+cu130 wheel): install CUDA 13 runtime into ComfyUI's venv and restart:\n"
-            f"  {py} -m pip install nvidia-cuda-runtime-cu13 nvidia-cublas-cu13\n"
+            f"  {py} -m pip install nvidia-cuda-runtime \"nvidia-cublas==13.6.0.2\"\n"
             f"Also confirm ggml-cuda.dll exists under .../llama_cpp/lib "
             f"(reinstall from this node's requirements.txt if missing)."
         )

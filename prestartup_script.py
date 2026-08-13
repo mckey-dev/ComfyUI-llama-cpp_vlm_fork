@@ -33,9 +33,11 @@ _LINUX_CUDA_PIP = (
 )
 
 # Windows CUDA DLLs for JamePeng +cu130 wheels in requirements.txt.
+# PyPI renamed cu13 stubs -> nvidia-cuda-runtime / nvidia-cublas (CUDA 13).
+# Pin cublas: 13.6.1.10+ currently ships Linux wheels only (no win_amd64).
 _WIN_CUDA_PIP = (
-    ("nvidia-cuda-runtime-cu13", "cudart64_13.dll"),
-    ("nvidia-cublas-cu13", "cublas64_13.dll"),
+    ("nvidia-cuda-runtime", "cudart64_13.dll"),
+    ("nvidia-cublas==13.6.0.2", "cublas64_13.dll"),
 )
 
 
@@ -234,7 +236,7 @@ def ensure_linux_cuda_runtime() -> None:
 
 
 def ensure_windows_cuda_runtime() -> None:
-    """Install pip nvidia-*-cu13 packages needed by ggml-cuda.dll on Windows."""
+    """Install pip nvidia-cuda-runtime / nvidia-cublas for ggml-cuda.dll on Windows."""
     if sys.platform != "win32":
         return
 

@@ -35,7 +35,7 @@ ComfyUI 起動時、`prestartup_script.py` が不足分を自動インストー�
 
 - 全 OS: `llama-cpp-python`（`requirements.txt` の platform wheel）
 - Linux: `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` / `nvidia-nccl-cu12`（`.so` が無いとき）
-- Windows: `nvidia-cuda-runtime-cu13` / `nvidia-cublas-cu13`（`+cu130` wheel 用 DLL が無いとき）
+- Windows: `nvidia-cuda-runtime` / `nvidia-cublas`（`+cu130` wheel 用 DLL が無いとき。旧 `*-cu13` 名は deprecated）
 
 **補足:** 新UI（Registry）は `pyproject.toml` の依存だけを入れます。`llama-cpp-python` と上記 CUDA ランタイムは入りません（旧 Manager でも URL 直指定 wheel は失敗しやすいです）。事前に入れたい場合:
 
@@ -44,7 +44,7 @@ python -m pip install -r ComfyUI-llama-cpp_vlm_fork/requirements.txt
 # Linux GPU:
 python -m pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-nccl-cu12
 # Windows GPU (+cu130):
-python -m pip install nvidia-cuda-runtime-cu13 nvidia-cublas-cu13
+python -m pip install nvidia-cuda-runtime "nvidia-cublas==13.6.0.2"
 ```
 
 自動／手動インストールに失敗した場合はソースビルドを試してください。
