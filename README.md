@@ -17,7 +17,7 @@ ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**
 
 上流プロジェクトの機能を引き継ぎつつ、次のような変更・拡張を入れています。
 
-- モデル配置先を `ComfyUI/models/text_encoders`（キー `llm_vl`）に変更（上流の `models/LLM` とは非互換）
+- モデル配置先のデフォルトを `ComfyUI/models/llm` に変更（Settings で変更可。上流の `models/LLM` とは非互換）
 - 起動時に `prestartup_script.py` が `requirements.txt` から OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
 - Linux で CUDA wheel が必要とする `libnccl` / `libcudart` / `libcublas` を pip の `nvidia-*` パッケージから解決（無いと CPU に落ちる）
 - Qwen3.6 など新しい chat handler / MTP 系モデル向けの調整
@@ -50,7 +50,11 @@ pip install llama-cpp-python --no-cache-dir
 
 ### モデル
 
-`.gguf` を `ComfyUI/models/text_encoders` に配置してください。
+`.gguf` を `ComfyUI/models/llm` に配置してください（初回起動時にフォルダを作成します）。
+
+ComfyUI の **Settings → llama-cpp-vlm-fork → GGUF model directory** でパスを変更できます（空欄 = デフォルト）。絶対パス、または `models` フォルダからの相対パス（例: `llm`）。Settings にフォルダ選択 UI は無いのでパスを手入力してください。変更後は Loader を開き直すか画面をリロードしてください。
+
+追加ディレクトリは `extra_model_paths.yaml` の `llm:` キーでも指定できます。
 
 > VLM で画像入力する場合は、対応する `mmproj` も同じフォルダへ置き、Loader で選択してください。
 

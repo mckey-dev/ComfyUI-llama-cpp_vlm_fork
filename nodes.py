@@ -233,7 +233,7 @@ class LLAMA_CPP_STORAGE:
         image_min_tokens = config["image_min_tokens"]
         n_gpu_layers = -1
         
-        model_path = resolve_llm_vl_path(model, "Model")
+        model_path = resolve_llm_gguf(model, "Model")
         handler = get_chat_handler(chat_handler)
         
         if vram_limit == 0:
@@ -244,7 +244,7 @@ class LLAMA_CPP_STORAGE:
             gguf_layer_size = max(gguf_size / gguf_layers, 1e-6)
         
         if mmproj and mmproj != "None":
-            mmproj_path = resolve_llm_vl_path(mmproj, "mmproj")
+            mmproj_path = resolve_llm_gguf(mmproj, "mmproj")
             if chat_handler == "None":
                 raise ValueError('"chat_handler" cannot be None!')
             
@@ -367,33 +367,106 @@ if not hasattr(mm, "unload_all_models_backup"):
     mm.unload_all_models = patched_unload_all_models
     print("[llama-cpp_vlm] Model cleanup hook applied!")
 
-def update_folder_names_and_paths(key, targets=[]):
-    base = folder_paths.folder_names_and_paths.get(key, ([], {}))
-    base = base[0] if isinstance(base[0], (list, set, tuple)) else []
-    target = next(
-        (x for x in targets if x in folder_paths.folder_names_and_paths), targets[0]
-    )
-    orig, _ = folder_paths.folder_names_and_paths.get(target, ([], {}))
-    folder_paths.folder_names_and_paths[key] = (orig or base, {".gguf"})
-    if base and base != orig:
-        logging.warning(
-            f"Unknown file list already present on key {key}: {base}")
+LLM_FOLDER_KEY = "llm"
+LLM_MODEL_DIR_SETTING = "LlamaCppVlm.ModelDirectory"
 
-def resolve_llm_vl_path(filename: str, kind: str = "Model") -> str:
-    """Resolve a .gguf under llm_vl/text_encoders; surface broken symlinks clearly."""
-    path = folder_paths.get_full_path("llm_vl", filename)
-    if path and os.path.isfile(path):
-        return path
-    for folder in folder_paths.get_folder_paths("llm_vl"):
+def _default_llm_dir() -> str:
+    return os.path.join(folder_paths.models_dir, "llm")
+
+def _register_default_llm_folder() -> None:
+    default = _default_llm_dir()
+    os.makedirs(default, exist_ok=True)
+    folder_paths.add_model_folder_path(LLM_FOLDER_KEY, default, is_default=True)
+    paths = folder_paths.get_folder_paths(LLM_FOLDER_KEY)
+    folder_paths.folder_names_and_paths[LLM_FOLDER_KEY] = (paths, {".gguf"})
+
+def _read_model_directory_setting() -> str:
+    """Read Settings override from user comfy.settings.json (if set)."""
+    user_root = folder_paths.get_user_directory()
+    candidates = [
+        os.path.join(user_root, "default", "comfy.settings.json"),
+        os.path.join(user_root, "comfy.settings.json"),
+    ]
+    try:
+        for name in os.listdir(user_root):
+            path = os.path.join(user_root, name, "comfy.settings.json")
+            if os.path.isfile(path):
+                candidates.append(path)
+    except OSError:
+        pass
+    seen: set[str] = set()
+    for file in candidates:
+        if file in seen or not os.path.isfile(file):
+            continue
+        seen.add(file)
+        try:
+            with open(file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            value = data.get(LLM_MODEL_DIR_SETTING)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        except Exception:
+            continue
+    return ""
+
+def _resolve_configured_dir(raw: str) -> str:
+    raw = os.path.expanduser(raw.strip().strip('"').strip("'"))
+    if os.path.isabs(raw):
+        return os.path.abspath(raw)
+    base_path = getattr(folder_paths, "base_path", None) or os.path.dirname(folder_paths.models_dir)
+    candidates = [
+        os.path.abspath(os.path.join(base_path, raw)),
+        os.path.abspath(os.path.join(folder_paths.models_dir, raw)),
+    ]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return candidates[0]
+
+def get_llm_model_dirs() -> list[str]:
+    """Directories to scan for .gguf (Settings override, then models/llm + extras)."""
+    dirs: list[str] = []
+    override = _read_model_directory_setting()
+    if override:
+        dirs.append(_resolve_configured_dir(override))
+    try:
+        for path in folder_paths.get_folder_paths(LLM_FOLDER_KEY):
+            if path not in dirs:
+                dirs.append(path)
+    except Exception:
+        pass
+    if not dirs:
+        dirs.append(_default_llm_dir())
+    for path in dirs:
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError:
+            pass
+    return dirs
+
+def list_llm_ggufs() -> list[str]:
+    found: set[str] = set()
+    for folder in get_llm_model_dirs():
+        files, _ = folder_paths.recursive_search(folder, excluded_dir_names=[".git"])
+        found.update(folder_paths.filter_files_extensions(files, {".gguf"}))
+    return sorted(found)
+
+def resolve_llm_gguf(filename: str, kind: str = "Model") -> str:
+    """Resolve a .gguf under the configured llm model dirs."""
+    for folder in get_llm_model_dirs():
         candidate = os.path.join(folder, filename)
+        if os.path.isfile(candidate):
+            return candidate
         if os.path.islink(candidate) and not os.path.exists(candidate):
             raise FileNotFoundError(
-                f'{kind} is a broken symlink under llm_vl/text_encoders: "{filename}" -> '
+                f'{kind} is a broken symlink under llm model dir: "{filename}" -> '
                 f'"{os.path.realpath(candidate)}". Replace it with the real .gguf or fix the link target.'
             )
-    raise FileNotFoundError(f'{kind} not found under llm_vl/text_encoders: "{filename}"')
+    searched = ", ".join(get_llm_model_dirs())
+    raise FileNotFoundError(f'{kind} not found under llm model dirs [{searched}]: "{filename}"')
 
-update_folder_names_and_paths("llm_vl", ["text_encoders"])
+_register_default_llm_folder()
+
 preset_prompts = {
     "Empty - Nothing": "",
     "Normal - Describe": "Describe this @.",
@@ -492,7 +565,7 @@ def draw_bbox(image, json, mode):
 class llama_cpp_model_loader:
     @classmethod
     def INPUT_TYPES(s):
-        all_llms = folder_paths.get_filename_list("llm_vl")
+        all_llms = list_llm_ggufs()
         model_list = [f for f in all_llms if "mmproj" not in f.lower()]
         mmproj_list = ["None"]+[f for f in all_llms if "mmproj" in f.lower()]
             

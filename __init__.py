@@ -203,6 +203,8 @@ if sys.platform.startswith("linux"):
     except OSError as e:
         _log.debug("CUDA lib preload skipped: %s", e)
 
+WEB_DIRECTORY = "./web"
+
 try:
     from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 except Exception as e:
@@ -215,4 +217,4 @@ except Exception as e:
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
