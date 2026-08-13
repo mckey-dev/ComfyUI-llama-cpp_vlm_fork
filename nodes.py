@@ -311,11 +311,17 @@ class LLAMA_CPP_STORAGE:
             try:
                 from llama_cpp import llama_supports_gpu_offload
                 if not llama_supports_gpu_offload():
+                    try:
+                        from .support.cuda_runtime import gpu_offload_hint
+                        hint = gpu_offload_hint()
+                    except Exception:
+                        hint = (
+                            "Install the matching nvidia-cuda-runtime / nvidia-cublas "
+                            "into ComfyUI's venv and restart (see README)."
+                        )
                     print(
-                        "[llama-cpp_vlm] WARNING: GPU offload unavailable; inference will use CPU. "
-                        "Install CUDA runtime into ComfyUI's venv and restart:\n"
-                        "  python -m pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12\n"
-                        "Then verify: ldd .../llama_cpp/lib/libggml-cuda.so | grep -E 'cudart|cublas|not found'",
+                        "[llama-cpp_vlm] WARNING: GPU offload unavailable; inference will use CPU.\n"
+                        f"{hint}",
                         flush=True,
                     )
             except Exception:

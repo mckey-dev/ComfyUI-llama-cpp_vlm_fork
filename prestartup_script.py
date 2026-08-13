@@ -32,6 +32,12 @@ _LINUX_CUDA_PIP = (
     ("nvidia-nccl-cu12", "nccl", "libnccl.so.2"),
 )
 
+# Windows CUDA DLLs for JamePeng +cu130 wheels in requirements.txt.
+_WIN_CUDA_PIP = (
+    ("nvidia-cuda-runtime-cu13", "cudart64_13.dll"),
+    ("nvidia-cublas-cu13", "cublas64_13.dll"),
+)
+
 
 def _package_present(name: str) -> bool:
     """True if the distribution/module can be located (not a native-load test)."""
@@ -76,6 +82,15 @@ def _nvidia_so_present(subdir: str, soname: str) -> bool:
             return True
         if any(lib.glob(soname + "*")):
             return True
+    return False
+
+
+def _nvidia_dll_present(dll_name: str) -> bool:
+    """True if site-packages/nvidia/*/bin|lib/<dll_name> exists."""
+    for root in _site_roots():
+        for d in list(root.glob("nvidia/*/bin")) + list(root.glob("nvidia/*/lib")):
+            if (d / dll_name).is_file():
+                return True
     return False
 
 
@@ -218,6 +233,53 @@ def ensure_linux_cuda_runtime() -> None:
         print(f"{_PREFIX} Linux CUDA runtime packages: install complete", flush=True)
 
 
+def ensure_windows_cuda_runtime() -> None:
+    """Install pip nvidia-*-cu13 packages needed by ggml-cuda.dll on Windows."""
+    if sys.platform != "win32":
+        return
+
+    missing_pkgs: list[str] = []
+    for pip_name, dll_name in _WIN_CUDA_PIP:
+        if _nvidia_dll_present(dll_name):
+            print(f"{_PREFIX} CUDA DLL OK: {dll_name}", flush=True)
+        else:
+            print(
+                f"{_PREFIX} CUDA DLL missing: {dll_name} -> will install {pip_name}",
+                flush=True,
+            )
+            missing_pkgs.append(pip_name)
+
+    if not missing_pkgs:
+        return
+
+    to_install = list(dict.fromkeys(missing_pkgs))
+    print(
+        f"{_PREFIX} installing Windows CUDA runtime packages: {', '.join(to_install)}",
+        flush=True,
+    )
+    try:
+        _pip_install(*to_install)
+    except subprocess.CalledProcessError as e:
+        print(
+            f"{_PREFIX} [warn] CUDA runtime pip install failed: {e}\n"
+            f"  manual: {sys.executable} -m pip install {' '.join(to_install)}\n"
+            f"  Without these, llama.cpp GPU offload falls back to CPU.",
+            flush=True,
+        )
+        return
+
+    still_missing = [
+        dll_name for _, dll_name in _WIN_CUDA_PIP if not _nvidia_dll_present(dll_name)
+    ]
+    if still_missing:
+        print(
+            f"{_PREFIX} [warn] still missing after install: {', '.join(still_missing)}",
+            flush=True,
+        )
+    else:
+        print(f"{_PREFIX} Windows CUDA runtime packages: install complete", flush=True)
+
+
 def _load_cuda_runtime_module():
     """Load support/cuda_runtime.py without importing the package (avoids llama_cpp)."""
     path = _ROOT / "support" / "cuda_runtime.py"
@@ -234,8 +296,8 @@ def _load_cuda_runtime_module():
 
 
 def expose_cuda_libs_before_imports() -> None:
-    """Symlink / LD_LIBRARY_PATH / preload before any custom node imports llama_cpp."""
-    if not sys.platform.startswith("linux"):
+    """Make CUDA runtime visible before any custom node imports llama_cpp."""
+    if not (sys.platform.startswith("linux") or sys.platform == "win32"):
         return
     mod = _load_cuda_runtime_module()
     if mod is None:
@@ -248,6 +310,7 @@ def expose_cuda_libs_before_imports() -> None:
 try:
     ensure_llama_cpp_python()
     ensure_linux_cuda_runtime()
+    ensure_windows_cuda_runtime()
     expose_cuda_libs_before_imports()
 except Exception as e:
     print(f"{_PREFIX} [warn] prestartup failed: {e}", flush=True)

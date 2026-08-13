@@ -13,7 +13,7 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-if sys.platform.startswith("linux"):
+if sys.platform.startswith("linux") or sys.platform == "win32":
     try:
         from .support.cuda_runtime import (
             ensure_cuda_libs_for_llama_cpp,
