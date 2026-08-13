@@ -307,6 +307,19 @@ class LLAMA_CPP_STORAGE:
         
         print(f"[llama-cpp_vlm] Loading model: {model}")
         print(f"[llama-cpp_vlm] n_gpu_layers = {n_gpu_layers} (vram_limit={vram_limit}, n_ctx={n_ctx})")
+        if n_gpu_layers != 0:
+            try:
+                from llama_cpp import llama_supports_gpu_offload
+                if not llama_supports_gpu_offload():
+                    print(
+                        "[llama-cpp_vlm] WARNING: GPU offload unavailable; inference will use CPU. "
+                        "Install CUDA runtime into ComfyUI's venv and restart:\n"
+                        "  python -m pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12\n"
+                        "Then verify: ldd .../llama_cpp/lib/libggml-cuda.so | grep -E 'cudart|cublas|not found'",
+                        flush=True,
+                    )
+            except Exception:
+                pass
         try:
             cls.llm = Llama(
                 model_path,

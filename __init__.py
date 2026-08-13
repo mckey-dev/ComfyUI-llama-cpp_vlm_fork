@@ -200,6 +200,20 @@ if sys.platform.startswith("linux"):
             src = _find_nvidia_lib(soname, pattern)
             if src is not None:
                 ctypes.CDLL(str(src), mode=mode)
+        # Probe ggml CUDA backend early so missing cudart/cublas show at startup.
+        lib_dir = _llama_cpp_lib_dir()
+        cuda_so = (lib_dir / "libggml-cuda.so") if lib_dir else None
+        if cuda_so is not None and cuda_so.is_file():
+            try:
+                ctypes.CDLL(str(cuda_so), mode=mode)
+                _log.info("llama-cpp: libggml-cuda.so load OK")
+            except OSError as e:
+                _log.warning(
+                    "llama-cpp: libggml-cuda.so failed to load (%s). "
+                    "GPU offload will fall back to CPU. Install: "
+                    "python -m pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12",
+                    e,
+                )
     except OSError as e:
         _log.debug("CUDA lib preload skipped: %s", e)
 

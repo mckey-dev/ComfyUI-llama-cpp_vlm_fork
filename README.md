@@ -18,8 +18,8 @@ ComfyUI Manager 上の表示名: **`llama-cpp_vlm-fork`**
 上流プロジェクトの機能を引き継ぎつつ、次のような変更・拡張を入れています。
 
 - モデル配置先のデフォルトを `ComfyUI/models/llm` に変更（Settings で変更可。上流の `models/LLM` とは非互換）
-- 起動時に `prestartup_script.py` が `requirements.txt` から OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
-- Linux で CUDA wheel が必要とする `libnccl` / `libcudart` / `libcublas` を pip の `nvidia-*` パッケージから解決（無いと CPU に落ちる）
+- 起動時に `prestartup_script.py` が OS / Python 向けの [JamePeng llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) wheel を自動導入（未インストール時）
+- Linux では同スクリプトが `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` / `nvidia-nccl-cu12` も不足時に自動導入し、`__init__.py` が `libcudart` / `libcublas` / `libnccl` を解決（無いと CPU に落ちる）
 - Qwen3.6 など新しい chat handler / MTP 系モデル向けの調整
 - llama-cpp-python 0.3.46 の `mmproj_path` 対応、CPU（`vram_limit=0` + mmap）動作など
 - Prompt Enhancer に Krea 2 / Krea 2 Edit / Anima / MiniMax H3 など向けプリセット（英語・日本語）を追加
@@ -31,12 +31,17 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/mckey-dev/ComfyUI-llama-cpp_vlm_fork.git
 ```
 
-ComfyUI 起動時、`llama-cpp-python` が無ければ `prestartup_script.py` が `requirements.txt` から自動インストールします。
+ComfyUI 起動時、`prestartup_script.py` が不足分を自動インストールします。
 
-**補足:** 新UI（Registry）は `pyproject.toml` の依存だけを入れます。`llama-cpp-python` は `requirements.txt` 側にあるため、Manager 経由では入りません（旧 Manager でも URL 直指定 wheel は失敗しやすいです）。事前に入れたい場合:
+- 全 OS: `llama-cpp-python`（`requirements.txt` の platform wheel）
+- Linux のみ: GPU 用 `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` / `nvidia-nccl-cu12`（`.so` が無いとき）
+
+**補足:** 新UI（Registry）は `pyproject.toml` の依存だけを入れます。`llama-cpp-python` と上記 CUDA ランタイムは入りません（旧 Manager でも URL 直指定 wheel は失敗しやすいです）。事前に入れたい場合:
 
 ```bash
 python -m pip install -r ComfyUI-llama-cpp_vlm_fork/requirements.txt
+# Linux GPU:
+python -m pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-nccl-cu12
 ```
 
 自動／手動インストールに失敗した場合はソースビルドを試してください。
